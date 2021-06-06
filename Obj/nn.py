@@ -938,6 +938,7 @@ def nn(fl=None):
             # difference in the predictions of the layers in question to reveal the changed pixels
             preds = np.round(np.asarray(abs(np.asarray(recon(preds[0,0]))-np.asarray(recon(preds[1,0])))))
             preds = preds.reshape(np.asarray(preds.shape)[sorted(range(0,len(preds.shape)),reverse=True)])
+            # changes here for the differences modeling
             #preds = np.where(abs(ivals-rivals)<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
             #preds = np.where(abs(ivals-rivals)>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15)-preds)
             preds = np.where(preds<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
