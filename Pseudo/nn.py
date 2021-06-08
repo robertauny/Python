@@ -62,6 +62,23 @@ tf.random.set_seed(12345)
 
 ############################################################################
 ##
+## Purpose:   Calculate the number of clusters to form using random clusters
+##
+############################################################################
+def calcN(pts=None):
+    ret = 2**2
+    if (pts != None and type(pts) == type(0)):
+        M    = ceil(sqrt(pts))
+        for i in range(2,const.constants.MAX_FEATURES+1):
+            N    = max(floor(sqrt(i)),2)
+            if pts/(pts+(2*M*((N-1)^2))) <= 0.5:
+                ret  = N**2
+            else:
+                break
+    return ret
+
+############################################################################
+##
 ## Purpose:   Deep belief network support function
 ##
 ############################################################################
@@ -415,8 +432,40 @@ def nn_dat(dat=None,tgt=1):
         #
         # data is scaled to represent black/white pixels
         ivals= dat[:,:-tgt] * 255
+        shape= list(ivals.shape)
         # the targets
         tvals= dat[:, -tgt]
+        # without going into a lot of detail here, using a result based upon the random cluster model
+        # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
+        # a total of M^2 data points, uniformly and evenly distributed throughout a bounded uniformly
+        # partitioned unit area in the 2D plane
+        #
+        # then the probability of connection for any 2 data points in the bounded region is given by
+        # M^2 / (M^2 + (2M * (N-1)^2)) and by the random cluster model, this probability has to equate
+        # to 1/2, which gives a way to solve for N, the minimum number of clusters to form for a
+        # data set consistinng of M^2 Gaussian distributed data points projected into 2D space
+        #
+        # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
+        #
+        # note that the number of data points is M^2 in the calculations, different than M below
+        kM   = max(2,int(floor(np.float32(min(shape))/np.float32(calcN(min(shape))))))
+        # replace kMxkM portions of the data set with uniformly distributed image values
+        #
+        # generate the kM^2 values
+        vals = np.random.randint(0,255,kM*kM).reshape((kM,kM))
+        # all kMxKM regions will have the same set of values represented
+        # while the boundary of the region will be the original image values
+        # this is the new data set that will be passed to nn_dat for smoothing
+        # and recovery of the image to test the theory
+        rows = int(floor(np.float32(shape[0])/np.float32(kM+1)))
+        cols = int(floor(np.float32(shape[1])/np.float32(kM+1)))
+        for i in range(0,rows):
+            r    = range(i*(kM+1),i*(kM+1)+kM)
+            for j in range(0,cols):
+                c    = range(j*(kM+1),j*(kM+1)+kM)
+                for k in range(0,kM):
+                    for m in range(0,kM):
+                        ivals[r[0]+k,c[0]+m] = vals[k,m]
         # number of data points, properties and splits
         m    = len(ivals)
         om   = m
@@ -534,8 +583,8 @@ def nn_dat(dat=None,tgt=1):
             dump = []
             for i in range(0,len(rivals)):
                 dump.append(rivals_func(i))
-        ret["ivals" ] = ivals
-        ret["rivals"] = nn_recon(rivals,om,op)
+        ret["ivals" ] = nn_recon(ivals ,om,op)
+        ret["rivals"] = nn_recon(rivals,om,op) / 255
         ret["tvals" ] = tvals
         ret["m"     ] = m
         ret["p"     ] = p
@@ -674,111 +723,20 @@ def nn_split(pfl=None,mfl=None,prfl=None):
 
 ############################################################################
 ##
-## Purpose:   Build the model
+## Purpose:   Build the Gibbs sampler
 ##
 ############################################################################
-def nn_model(dat=None):
-    model  = None
+def nn_gibbs(dat=None):
+    gibbs= {"orig":None,"mod":None,"smth":None}
     if (type(dat) == type([]) or type(dat) == type(np.asarray([]))):
+        gibbs["orig"] = dat.copy()
+        # we have the original image, the modified image, and the smoothed image
+        #
         # make the input values better for processing in parallel
-        vals   = nn_dat(dat)
-        # define the categoricals for clustering
-        #
-        # the number of classes
-        cls    = len(utils.utils._unique(vals["tvals"].flatten()))
-        # the categoricals in the proper length
-        sv     = list(vals["tvals"].shape)
-        sv[-1] = cls
-        v      = list(np.full(sv,None))
-        for i in range(0,len(v)):
-            for j in range(0,len(v[i])):
-                v[i][j] = nn_cat(vals["tvals"][i][j][0],vals["s"],vals["p"],cls)
-        v      = np.asarray(v).astype(np.single)
-        # don't want to use a linear model for dbnact as that assumes that the
-        # data are linearly separable, which results in 2 classes by default
-        # as such, the resulting linear subspace will present values fairly close
-        # to one another (we are filtering noise after all) and that is not desirable
-        # in the long run ... thus we will use the sigmoid instead
-        #
-        # may also want to try a softmax with categorical cross entropy
-        #
-        # also, we can make use of permuations on each column sequence to make predictions
-        # on the whole set of columns using the Markov property and separable processes
-        # build the model using the input values and the target values
-        model = dbn(np.asarray(vals["ivals"])
-                   ,np.asarray(v)
-                   ,sfl=const.constants.SFL
-                   ,splits=vals["s"]
-                   ,props=vals["p"]
-                   ,loss=const.constants.LOSS
-                   ,optimizer=const.constants.OPTI
-                   ,rbmact=const.constants.RBMA
-                   ,dbnact=const.constants.DBNA
-                   ,clust=cls)
-    return model
-
-############################################################################
-##
-## Purpose:   Predict the model
-##
-############################################################################
-def nn_predict(model=None,dat=None):
-    ret= {"vals":None,"preds":None,"score":None,"diff":None}
-    if not type(model) == type(None):
-        if (type(dat) == type([]) or type(dat) == type(np.asarray([]))):
-            # predict the model using the test data
-            #
-            # need the data in the right form first
-            ret["vals"] = nn_dat(dat)
-            # we also want to know how the relaxed data
-            # differs from the original data so that we
-            # can determine which features are most
-            # determinative of the distribution
-            #
-            # note this result relies upon random field theory
-            # as the relaxed distribution is an equilibrium distribution
-            # and the places where the original distribution differs
-            # from the relaxed distribution amounts to sources of variance
-            # that the difference allows us to measure
-            ivals       = nn_recon(ret["vals"]["ivals"],ret["vals"]["rivals"].shape[1],ret["vals"]["rivals"].shape[2])
-            diff        = abs(ivals[0]-ret["vals"]["rivals"][0])
-            ret["diff"] = [len([i for i in diff[:,j] if not i == 0]) for j in range(0,len(diff[0,:]))]
-            # now make the prediction
-            preds       = model.predict(ret["vals"]["ivals"].astype(np.single))
-            # make the class predictions into binary values but keep the prediction probabilities
-            sp          = list(preds.shape)
-            sp[-1]      = len(ret["vals"]["tvals"][0][0])
-            p           = np.full(sp,0  )
-            s           = np.full(sp,0.0)
-            for i in range(0,sp[0]):
-                for j in range(0,sp[1]):
-                    m          = list(preds[i][j])
-                    p[i][j][0] = m.index(max(m))
-                    s[i][j][0] = max(m)
-            # append the preds to the test data
-            #
-            # first we need to construct the table
-            # of outputs from the model prediction
-            # then we will vote according to the most
-            # frequently appearing class label
-            #
-            # the construction amounts to only a reshape of the reconstruction
-            # as the preds are in the form determined by sp
-            p    = nn_recon(p,len(dat),1)
-            s    = nn_recon(s,len(dat),1)
-            sp   = list(p.shape)
-            p    = p.reshape(sp.reverse())[0]
-            s    = s.reshape(sp.reverse())[0]
-            # now we will use the values in each row to
-            # vote on the final prediction value
-            p            = np.asarray(list(map(utils.utils._most,p)))
-            s            = np.asarray(list(map(utils.utils._most,s)))
-            sp           = [1]
-            sp.extend(list(p.shape))
-            sp.extend([1])
-            ret["preds"] = np.append(dat,p.reshape(sp)[0],axis=1)
-            ret["score"] = np.append(dat,s.reshape(sp)[0],axis=1)
-    return ret
+        ret           = nn_dat(dat)
+        gibbs["mod" ] = ret["ivals" ]
+        gibbs["smth"] = ret["rivals"]
+    return gibbs
 
 ############################################################################
 ##
@@ -790,19 +748,16 @@ class NN():
     def _split(self,dfl=None,tfl=None,jfl=None):
         return nn_split(dfl,tfl,jfl)
     @classmethod
-    def _model(self,dat=None):
-        return nn_model(dat)
-    @classmethod
-    def _predict(self,model=None,dat=None):
-        return nn_predict(model,dat)
+    def _gibbs(self,dat=None):
+        return nn_gibbs(dat)
 
 ############################################################################
 ##
 ## Purpose:   Testing
 ##
 ############################################################################
-def nn_testing(dfl="csv/patients.csv",tfl="csv/medications.csv",jfl="csv/procedures.csv",p="00185faa-2760-4218-9bf5-db301acf8274",c="43878008",d="2012-10-14T15:06:37Z"):
-    ret  = {"scores":None,"labels":None}
+def nn_testing(dfl="csv/patients.csv",tfl="csv/medications.csv",jfl="csv/procedures.csv"):
+    ret  = {"orig":None,"mod":None,"smth":None}
     if (os.path.exists(dfl) and os.stat(dfl).st_size > 0) and \
        (os.path.exists(tfl) and os.stat(tfl).st_size > 0) and \
        (os.path.exists(jfl) and os.stat(jfl).st_size > 0):
@@ -813,23 +768,5 @@ def nn_testing(dfl="csv/patients.csv",tfl="csv/medications.csv",jfl="csv/procedu
         #
         # as one more output, we will plot the accuracy vs
         # the number of epochs for tuning the learner
-        model= nn._model(split["train"])
-        # now make the prediction
-        preds= nn._predict(model,split["test"])
-        # plot the ROC curve and confusion matrix using the true targets vs the predictions
-        #
-        # first get the targets and predictions (or probabilities)
-        tgts = split["test" ][:,-1]
-        prds = preds["preds"][:,-1]
-        scrs = preds["score"][:,-1]
-        diff = preds["diff" ]
-        print(preds["score"])
-        print(split["labels"])
-        # plot the color map indicating variability in the data features
-        utils.utils._pclrs(                     diff,                      "images/variance_"+dt+".png" )
-        # plot the confusion matrix
-        utils.utils._confusion(tgts.astype(np.uint8),prds.astype(np.uint8),"images/confusion_"+dt+".png")
-        # construct the final return value
-        ret["scores"] = preds["score"]
-        ret["labels"] = split["labels"]
+        ret  = nn._gibbs(split["train"])
     return ret

@@ -16,7 +16,7 @@
 
 class constants():
     # miscellaneous constants
-    CONFIG         = "tempus.json"
+    CONFIG         = "pseudo.json"
     TEST           = "test.json"
     BVAL           = -1
     MAX_CLUSTERS   = 3#10
@@ -105,7 +105,7 @@ class constants():
     BSZ            = 64
     LDIM           = 256
     VSPLIT         = 0.2
-    SFL            = "models/tempus.h5"
+    SFL            = "models/pseudo.h5"
     TRAIN_PCT      = 0.8
     MAX_PREDS      = 100#0
     BASE_LR        = 0.0002
