@@ -1,3 +1,19 @@
+#!/usr/bin/python
+
+############################################################################
+##
+## File:      constants.py
+##
+## Purpose:   General configuration constants
+##
+## Parameter: N/A
+##
+## Creator:   Robert A. Murphy
+##
+## Date:      Mar. 6, 2021
+##
+############################################################################
+
 # miscellaneous constants
 CONFIG         = "imaging.json"
 TEST           = "test.json"

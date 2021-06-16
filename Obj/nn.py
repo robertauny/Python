@@ -184,7 +184,7 @@ def dbn(inputs=[]
             #
             # note that the number of data points is M^2 in the calculations, different than M below
             #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
-            kM   = max(2,int(floor(np.float32(len(ip[0,0]))/np.float32(calcN(len(ip[0,0]))))))
+            kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
             # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
             #
             # encode the input data using the scaled exponential linear unit
@@ -315,7 +315,7 @@ def dbn(inputs=[]
                 #
                 # note that the number of data points is M^2 in the calculations, different than M below
                 #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
-                kM   = max(2,int(floor(np.float32(len(ip[0,0]))/np.float32(calcN(len(ip[0,0]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
                 # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
                 #
                 # encode the input data using the scaled exponential linear unit
@@ -456,195 +456,204 @@ def nn_roi(dat1=None,dat2=None):
 
 ############################################################################
 ##
-## Purpose:   Main wrapper for the neural network logic
+## Purpose:   Deconstruct the data
 ##
 ############################################################################
-def nn(fl=None):
-    # process a single file or a list of files being passed in
-    ret  = None
-    if not (fl == None):
-        # number of cpu cores for multiprocessing
-        nc   = const.CPU_COUNT if hasattr(const,"CPU_COUNT") else mp.cpu_count()
-        if (type(fl) == type([]) or type(fl) == type(np.asarray([]))):
-            ret  = Parallel(n_jobs=nc)(delayed(nn)(f) for f in fl)
-        else:
-            print(fl)
-            ro   = const.RO if hasattr(const,"RO") else True
-            ret  = {"fls":[],"roi":None,"kld":None,"swt":None}
-            if (os.path.exists(fl) and os.path.getsize(fl) > 0):
-                ivals= imread(fl)
-                ivals= np.stack((ivals,)*3,axis=-1) if len(ivals.shape) == 2 else ivals
-                ivals= ivals.reshape(np.asarray(ivals.shape)[sorted(range(0,len(ivals.shape)),reverse=True)])
-                print(ivals.shape)
-                # construct the relaxed image name
-                #
-                # file name minus the type extension
-                fln  = fl[:fl.rfind(".") ]
-                # file type extension
-                flt  = fl[ fl.rfind("."):]
-                # current date and time
-                dt   = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-                # relaxed image file name
-                #rfl  = fln + (const.IMGR if hasattr(const,"IMGR") else "_relaxed") + "_" + dt + flt
-                rfl  = fln + (const.IMGR if hasattr(const,"IMGR") else "_relaxed") + flt
-                print(rfl)
-                if not ro:
-                    # diff image file name
-                    #dfl  = fln + (const.IMGD if hasattr(const,"IMGD") else "_diff"   ) + "_" + dt + flt
-                    dfl  = fln + (const.IMGD if hasattr(const,"IMGD") else "_diff"   ) + flt
-                    print(dfl)
-                    # RGB image file name
-                    #bfl  = fln + (const.IMGB if hasattr(const,"IMGB") else "_rgb"    ) + "_" + dt + flt
-                    bfl  = fln + (const.IMGB if hasattr(const,"IMGB") else "_rgb"    ) + flt
-                    print(bfl)
-                    # 3D image file name
-                    #tfl  = fln + (const.IMG3 if hasattr(const,"IMG3") else "_3d"    ) + "_" + dt + flt
-                    tfl  = fln + (const.IMG3 if hasattr(const,"IMG3") else "_3d"     ) + flt
-                    print(tfl)
-                    #ret["fls"].extend([fl,rfl,dfl,bfl,tfl])
-                    ret["fls"].extend([rfl,dfl,bfl,tfl])
+def nn_decon(ivals=None,m=const.MAX_ROWS,p=const.PROPS,s=const.SPLITS):
+    ret  = None,0,0,0,0,0
+    if ((type(ivals) == type([]) or type(ivals) == type(np.asarray([]))) and len(ivals) > 1) and \
+       (m >= const.MAX_ROWS and s >= const.SPLITS and p >= const.PROPS):
+        # later the permutations in the colums that are taken together by separability
+        # due to the Markov property, will allow us a way to stochastically relax the entire dataset
+        # while also not overly taxing the resources of the local machine
+        #
+        # keep the data at a manageable size for processing
+        #
+        # handle columns first
+        #
+        # the number of datasets from excessive columns
+        blksc= int(ceil(p/const.MAX_COLS))
+        kp   = p
+        remc = kp % const.MAX_COLS
+        p    = const.MAX_COLS
+        s    = p
+        imgs = []
+        for blk in range(0,blksc):
+            if blk < blksc - 1:
+                imgs.append(np.asarray(ivals)[:,range(blk*p,(blk+1)*p)])
+            else:
+                e    = (blk+1)*p if blk < blksc-1 else min((blk+1)*p,kp)
+                if remc == 0:
+                    imgs.append(np.asarray(ivals)[:,range(blk*p,(blk+1)*p)])
                 else:
-                    ret["fls"].extend([rfl])
-            else:
-                return ret
-            print([[max(ivals[i].flatten()),ivals[i].shape] for i in range(0,len(ivals))])
-            # number of data points, properties and splits
-            m    = len(ivals[0])
-            p    = len(ivals[0,0])
-            # only one feature or property for the analysis
-            # just return None ... can't do anything
-            if not (m >= 2 or p >= 2):
-                return ret
-            s    = p
-            # we will make the colors of the grayscale image to be relatively close in range
-            # as we want to see which color is predicted most often when the colors differ
-            #
-            # later the permutations in the colums that are taken together by separability
-            # due to the Markov property, will allow us a way to stochastically relax the entire image
-            # while also not overly taxing the resources of the local machine
-            #
-            # keep the data at a manageable size for processing
-            #
-            # handle columns first
-            blksc= 0
-            if not (p <= const.MAX_COLS):
-                # the number of images from excessive columns
-                blksc= int(ceil(p/const.MAX_COLS))
-                kp   = p
-                remc = kp % const.MAX_COLS
-                p    = const.MAX_COLS
-                s    = p
-                imgs = []
-                for ival in ivals:
-                    for blk in range(0,blksc):
-                        if blk < blksc - 1:
-                            imgs.append(np.asarray(ival)[:,range(blk*p,(blk+1)*p)])
-                        else:
-                            e    = (blk+1)*p if blk < blksc-1 else min((blk+1)*p,kp)
-                            if remc == 0:
-                                imgs.append(np.asarray(ival)[:,range(blk*p,(blk+1)*p)])
-                            else:
-                                # pad the image with a black strip to make the dimensions match ... cols in 2nd arg, no rows
-                                imgs.append(np.pad(np.asarray(ival)[:,range(blk*p,e)],[(0,0),(0,const.MAX_COLS-remc)],'constant',constant_values=const.FILL_COLOR))
-                ivals= np.asarray(imgs)
-            # now handle rows
-            blksr= 0
-            if not (m <= const.MAX_ROWS):
-                # the number of images from excessive rows
-                blksr= int(ceil(m/const.MAX_ROWS))
-                km   = m
-                remr = km % const.MAX_ROWS
-                m    = const.MAX_ROWS
-                imgs = []
-                for ival in ivals:
-                    for blk in range(0,blksr):
-                        if blk < blksr - 1:
-                            imgs.append(np.asarray(ival)[range(blk*m,(blk+1)*m),:])
-                        else:
-                            e    = (blk+1)*m if blk < blksr-1 else min((blk+1)*m,km)
-                            if remr == 0:
-                                imgs.append(np.asarray(ival)[range(blk*m,(blk+1)*m),:])
-                            else:
-                                # pad the image with a black strip to make the dimensions match ... rows in 2nd arg, no cols
-                                imgs.append(np.pad(np.asarray(ival)[range(blk*m,e),:],[(0,const.MAX_ROWS-remr),(0,0)],'constant',constant_values=const.FILL_COLOR))
-                ivals= np.asarray(imgs)
-            # the next steps are allowable as a result of the random cluster model and separable stochastic processes
-            #
-            # Use the permutations function to get sequential permutations of length MAX_FEATURES
-            # Create a new data structure to hold the data for each feature indicated by the permutations.
-            # Train the model using the created data structure then predict using the same data structure.
-            # Modify the original data structure (image) using what’s been predicted.
-            #
-            # permutations of integer representations of the features in the image
-            perm = permute(list(range(0,len(ivals[0,0]))),False,min(len(ivals[0,0]),const.MAX_FEATURES))
-            perms= []
-            for j in range(0,len(perm)):
-                if len(perm[j]) == min(len(ivals[0,0]),const.MAX_FEATURES) and \
-                   list(perm[j]) == list(np.sort(list(range(min(perm[j]),max(perm[j])+1)))):
-                    if j == 0:
-                        perms.append(list(perm[j]))
+                    # pad the datasets with a zero strip to make the dimensions match ... cols in 2nd arg, no rows
+                    imgs.append(np.pad(np.asarray(ivals)[:,range(blk*p,e)],[(0,0),(0,const.MAX_COLS-remc)],'constant',constant_values=const.FILL_COLOR))
+        ivals= np.asarray( imgs)
+        # now handle rows
+        #
+        # the number of datasets from excessive rows
+        blksr= int(ceil(m/const.MAX_ROWS))
+        km   = m
+        remr = km % const.MAX_ROWS
+        m    = const.MAX_ROWS
+        imgs = []
+        for i in range(0,len(ivals)):
+            for blk in range(0,blksr):
+                if blk < blksr - 1:
+                    imgs.append(np.asarray(ivals[i])[range(blk*m,(blk+1)*m),:])
+                else:
+                    e    = (blk+1)*m if blk < blksr-1 else min((blk+1)*m,km)
+                    if remr == 0:
+                        imgs.append(np.asarray(ivals[i])[range(blk*m,(blk+1)*m),:])
                     else:
-                        if not list(perm[j]) in list(perms):
-                            perms.append(list(perm[j]))
-            # the number of properties most likely changed
-            p    = len(perms[0])
-            s    = p
-            # the new data structure to hold the image in permutations of length MAX_FEATURES
-            #
-            # the idea is that the local structure determined by the Markov process and separability
-            # allows us to only consider neighbors of each pixel ... as such, we will learn the local
-            # structure as determined by the permutations of features and predict the most probable color of each center pixel
-            # by considering the probability of each neighboring color ... here, we only create the structure
-            # and train the model ... the probabilities will be obtained in a prediction by auto encoding the inputs
-            # with the proviso that we are not looking to obtain outputs from the underlying subspace of the inputs
-            # rather we will have the same number of outputs as inputs, only the outputs will be probabilities
-            # indicating the likelihood of the color of the center pixel based upon the probabilities of colors of its neighbors
-            if type(ivals     ) == type(np.asarray([])) and \
-               type(ivals[0  ]) == type(np.asarray([])) and \
-               type(ivals[0,0]) == type(np.asarray([])):
-                nivals  = []
-                for i in range(0,len(ivals)):
-                    for j in range(0,len(perms)):
-                        # length of the input feature space has to be consistent
-                        # also, we want only contiguous integer feature columns, e.g. 0,1,2 or 3,4,5, etc.
-                        nivals.append(ivals[i][:,perms[j]])
-                nivals= np.asarray(nivals)
-            else:
-                nivals= ivals.copy()
-            # test if tensorflow is using the GPU or CPU
-            dump = None                                      if ver == const.VER else tf.compat.v1.disable_eager_execution()
-            cfg  = tf.ConfigProto(log_device_placement=True) if ver == const.VER else tf.compat.v1.ConfigProto(log_device_placement=True)
-            sess = tf.Session(config=cfg)                    if ver == const.VER else tf.compat.v1.Session(config=cfg)
-            dev  = tf.device(const.DEV)                      if ver == const.VER else tf.compat.v1.device(const.DEV)
-            with dev:
-                a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3], name='a')
-                b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2], name='b')
-                c = tf.matmul(a, b)
-            # don't want to use a linear model for dbnact as that assumes that the
-            # data are linearly separable, which results in 2 classes by default
-            # as such, the resulting linear subspace will present values fairly close
-            # to one another (we are filtering noise after all) and that is not desirable
-            # in the long run ... thus we will use the sigmoid instead
-            #
-            # may also want to try a softmax with categorical cross entropy
-            #
-            # did some testing with other loss/optimizer/dbnact combinations
-            # turns out that softmax and sigmoid in the final layer force
-            # normalized values between 0 and 1 for the output
-            #
-            # returning to linear and will use the greatest changes between values in
-            # the smoothed images and the original image as areas to concentrate upon
-            # when identifying regions of interest
-            #
-            # after more testing it looks like a classification configuration will work best
-            # in that we will get a probability for each color in each row of pixels which
-            # is an indication of which color is more probable ... this is useful as we can
-            # relax the image by changing all colors to the most probable one
-            #
-            # also, we can make use of permuations on each column sequence to make predictions
-            # on the whole set of columns using the Markov property and separable processes
-            #
-            # construct the relaxed image name
+                        # adding rows
+                        imgs.append(np.pad(np.asarray(ivals[i])[range(blk*m,e),:],[(0,const.MAX_ROWS-remr),(0,0)],'constant',constant_values=const.FILL_COLOR))
+        ivals= np.asarray( imgs)
+        ret  = ivals,m,p,s,blksc,blksr
+    return ret
+
+############################################################################
+##
+## Purpose:   Reconstruct the data
+##
+############################################################################
+def nn_recon(vals=None,m=const.MAX_ROWS,p=const.PROPS):
+    ret  = None
+    if ((type(vals) == type([]) or type(vals) == type(np.asarray([]))) and len(vals) > 1) and \
+       (m >= const.MAX_ROWS and p >= 1):
+        # first do the blocks of rows
+        #
+        # the number of datasets from excessive rows
+        blksr= int(ceil(m/const.MAX_ROWS))
+        km   = m
+        ivals= list(vals)
+        if not (blksr < 1):
+            rblks= int(len(ivals)/blksr)
+            rblks= max(rblks,1)
+            for blk in range(0,rblks):
+                ivals[blk*blksr] = list(ivals[blk*blksr])
+                for i in range(1,blksr):
+                    ival = ivals[blk*blksr]
+                    ival.extend(ivals[(blk*blksr)+i])
+                    if not (i < blksr - 1):
+                        if not (km % const.MAX_ROWS == 0):
+                            ival = np.asarray(ival)[range(0,len(ival)-(const.MAX_ROWS-(km%const.MAX_ROWS))),:]
+                    ivals[blk*blksr] = ival
+            ival = []
+            for i in range(0,int(len(ivals)/blksr)):
+                if len(ivals) % blksr == 0:
+                    ival.append(ivals[i*blksr])
+            ivals= np.asarray(ival)
+        # now do the blocks of cols
+        #
+        # the number of datasets from excessive columns
+        blksc= int(ceil(p/const.MAX_COLS))
+        kp   = p
+        ivals= list(ivals)
+        if not (blksc < 1):
+            cblks= int(len(ivals)/blksc)
+            cblks= max(cblks,1)
+            for blk in range(0,cblks):
+                ivals[blk*blksc] = list(ivals[blk*blksc])
+                for i in range(1,blksc):
+                    ival = np.append(ivals[blk*blksc],ivals[(blk*blksc)+i],axis=1)
+                    if not (i < blksc - 1):
+                        if not (kp % const.MAX_COLS == 0):
+                            ival = np.asarray(ival)[:,range(0,len(ival[0])-(const.MAX_COLS-(kp%const.MAX_COLS)))]
+                    ivals[blk*blksc] = ival
+            ret  = []
+            for i in range(0,int(len(ivals)/blksc)):
+                if len(ivals) % blksc == 0:
+                    ret.append(ivals[i*blksc])
+            ret  = np.asarray(ret)
+    return ret
+
+############################################################################
+##
+## Purpose:   Gibbs sampler for smoothing
+##
+############################################################################
+def nn_smooth(ivals=None,model=None,recon=False):
+    rivals= ivals.copy()
+    if (type(ivals) == type([]) or type(ivals) == type(np.asarray([]))):
+        # the next steps are allowable as a result of the random cluster model and separable stochastic processes
+        #
+        # Use the permutations function to get sequential permutations of length MAX_FEATURES
+        # Create a new data structure to hold the data for each feature indicated by the permutations.
+        # Train the model using the created data structure then predict using the same data structure.
+        # Modify the original data structure (image) using what’s been predicted.
+        #
+        # permutations of integer representations of the features in the image
+        perm = permute(list(range(0,len(ivals[0,0]))),False,min(len(ivals[0,0]),const.MAX_FEATURES))
+        perms= []
+        for j in range(0,len(perm)):
+            if len(perm[j]) == min(len(ivals[0,0]),const.MAX_FEATURES) and \
+               list(perm[j]) == list(np.sort(list(range(min(perm[j]),max(perm[j])+1)))):
+                if j == 0:
+                    perms.append(list(perm[j]))
+                else:
+                    if not list(perm[j]) in list(perms):
+                        perms.append(list(perm[j]))
+        # the number of properties most likely changed
+        p    = len(perms[0])
+        s    = p
+        # the new data structure to hold the image in permutations of length MAX_FEATURES
+        #
+        # the idea is that the local structure determined by the Markov process and separability
+        # allows us to only consider neighbors of each pixel ... as such, we will learn the local
+        # structure as determined by the permutations of features and predict the most probable color of each center pixel
+        # by considering the probability of each neighboring color ... here, we only create the structure
+        # and train the model ... the probabilities will be obtained in a prediction by auto encoding the inputs
+        # with the proviso that we are not looking to obtain outputs from the underlying subspace of the inputs
+        # rather we will have the same number of outputs as inputs, only the outputs will be probabilities
+        # indicating the likelihood of the color of the center pixel based upon the probabilities of colors of its neighbors
+        if type(ivals     ) == type(np.asarray([])) and \
+           type(ivals[0  ]) == type(np.asarray([])) and \
+           type(ivals[0,0]) == type(np.asarray([])):
+            nivals  = []
+            for i in range(0,len(ivals)):
+                for j in range(0,len(perms)):
+                    # length of the input feature space has to be consistent
+                    # also, we want only contiguous integer feature columns, e.g. 0,1,2 or 3,4,5, etc.
+                    nivals.append(ivals[i][:,perms[j]])
+            nivals= np.asarray(nivals)
+        else:
+            nivals= ivals.copy()
+        # test if tensorflow is using the GPU or CPU
+        dump = None                                      if ver == const.VER else tf.compat.v1.disable_eager_execution()
+        cfg  = tf.ConfigProto(log_device_placement=True) if ver == const.VER else tf.compat.v1.ConfigProto(log_device_placement=True)
+        sess = tf.Session(config=cfg)                    if ver == const.VER else tf.compat.v1.Session(config=cfg)
+        dev  = tf.device(const.DEV)                      if ver == const.VER else tf.compat.v1.device(const.DEV)
+        with dev:
+            a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3], name='a')
+            b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2], name='b')
+            c = tf.matmul(a, b)
+        # don't want to use a linear model for dbnact as that assumes that the
+        # data are linearly separable, which results in 2 classes by default
+        # as such, the resulting linear subspace will present values fairly close
+        # to one another (we are filtering noise after all) and that is not desirable
+        # in the long run ... thus we will use the sigmoid instead
+        #
+        # may also want to try a softmax with categorical cross entropy
+        #
+        # did some testing with other loss/optimizer/dbnact combinations
+        # turns out that softmax and sigmoid in the final layer force
+        # normalized values between 0 and 1 for the output
+        #
+        # returning to linear and will use the greatest changes between values in
+        # the smoothed images and the original image as areas to concentrate upon
+        # when identifying regions of interest
+        #
+        # after more testing it looks like a classification configuration will work best
+        # in that we will get a probability for each color in each row of pixels which
+        # is an indication of which color is more probable ... this is useful as we can
+        # relax the image by changing all colors to the most probable one
+        #
+        # also, we can make use of permuations on each column sequence to make predictions
+        # on the whole set of columns using the Markov property and separable processes
+        #
+        # construct the relaxed image name
+        if type(model) == type(None):
             sfl  = const.SFL if hasattr(const,"SFL") else "models/obj.h5"
             #model = dbn(np.asarray([ivals]),np.asarray([ivals]),splits=s,props=p)
             model= dbn(np.asarray([nivals])
@@ -658,37 +667,156 @@ def nn(fl=None):
                       ,dbnact='tanh' if ver == const.VER else const.RBMA
                       ,dbnout=p)
             assert(type(model) != type(None))
-            pvals= model.predict(np.asarray([nivals]))
-            pvals= pvals[0] if not (len(pvals) == 0) else pvals
-            # *********************************
-            # replace the original image here and compute the differences between
-            # the modified original image and the original image to identify
-            # the regions of interest
-            #
-            # also note that by breaking the data up into a smaller number of features and
-            # loading the data into the neural netowrk we are capturing the local characteristics
-            # guaranteed by the Markov property and encoding those characteristics and changed states
-            # for use afterward when other parts of the bounded region undergo the same relaxation process
-            # *********************************
-            rivals= ivals.copy()
-            def rivals_func(i):
-                for j in range(0,len(perms)):
-                    for k in range(0,len(rivals[i])):
-                        # local receptive fields will be square of size len(perms)
-                        # each partition of the image will have len(perms) columns
-                        # the partitions are stacked on top of each other in the ordering of the perms
-                        # so dividing by the number of images, we have all of the partitions for each image in stacked groupings
-                        # we need the right stack and partition for each image to get the right receptive field for replacement
-                        idx                  = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
-                        # copy the most probable color to all pixels in the kth row of the local receptive field
-                        rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
-                return None
-            if nc > 1:
-                dump = Parallel(n_jobs=nc)(delayed(rivals_func)(i) for i in range(0,len(rivals)))
+        pvals= model.predict(np.asarray([nivals]))
+        pvals= pvals[0] if not (len(pvals) == 0) else pvals
+        # *********************************
+        # replace the original image here and compute the differences between
+        # the modified original image and the original image to identify
+        # the regions of interest
+        #
+        # also note that by breaking the data up into a smaller number of features and
+        # loading the data into the neural netowrk we are capturing the local characteristics
+        # guaranteed by the Markov property and encoding those characteristics and changed states
+        # for use afterward when other parts of the bounded region undergo the same relaxation process
+        # *********************************
+        def rivals_func(i):
+            for j in range(0,len(perms)):
+                for k in range(0,len(rivals[i])):
+                    # local receptive fields will be square of size len(perms)
+                    # each partition of the image will have len(perms) columns
+                    # the partitions are stacked on top of each other in the ordering of the perms
+                    # so dividing by the number of images, we have all of the partitions for each image in stacked groupings
+                    # we need the right stack and partition for each image to get the right receptive field for replacement
+                    if recon:
+                        # for reconstructions part of the image has been randomly generated
+                        # that allows for the compression of the image and overlap
+                        # so we will always take the last element and replace all other values with it
+                        # this is from the markov property and other proven results in the paper
+                        idx              = len(perms[j]) - 1
+                    else:
+                        idx              = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
+                    # copy the most probable color to all pixels in the kth row of the local receptive field
+                    rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
+            return None
+        # number of cpu cores for multiprocessing
+        nc   = const.CPU_COUNT if hasattr(const,"CPU_COUNT") else mp.cpu_count()
+        if nc > 1:
+            dump = Parallel(n_jobs=nc)(delayed(rivals_func)(i) for i in range(0,len(rivals)))
+        else:
+            dump = []
+            for i in range(0,len(rivals)):
+                dump.append(rivals_func(i))
+    return rivals,model
+
+############################################################################
+##
+## Purpose:   Compress and reconstruct the image
+##
+############################################################################
+def nn_compress(ifl=None,rfl=None):
+    ret  = False
+    if not (ifl == None or rfl == None):
+        ivals= cv2.imread(ifl,cv2.IMREAD_GRAYSCALE).copy()
+        shape= list(ivals.shape)
+        # without going into a lot of detail here, using a result based upon the random cluster model
+        # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
+        # a total of M^2 data points, uniformly and evenly distributed throughout a bounded uniformly
+        # partitioned unit area in the 2D plane
+        #
+        # then the probability of connection for any 2 data points in the bounded region is given by
+        # M^2 / (M^2 + (2M * (N-1)^2)) and by the random cluster model, this probability has to equate
+        # to 1/2, which gives a way to solve for N, the minimum number of clusters to form for a
+        # data set consistinng of M^2 Gaussian distributed data points projected into 2D space
+        #
+        # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
+        #
+        # note that the number of data points is M^2 in the calculations, different than M below
+        kM   = max(2,int(floor(np.float32(sqrt(min(shape)))/np.float32(calcN(min(shape))))))
+        # replace kMxkM portions of the data set with uniformly distributed image values
+        #
+        # generate the kM^2 values
+        vals = np.random.randint(0,255,kM*kM).reshape((kM,kM))
+        # all kMxKM regions will have the same set of values represented
+        # while the boundary of the region will be the original image values
+        # this is the new data set that will be passed to nn_dat for smoothing
+        # and recovery of the image to test the theory
+        rows = int(floor(np.float32(shape[0])/np.float32(kM+1)))
+        cols = int(floor(np.float32(shape[1])/np.float32(kM+1)))
+        for i in range(0,rows):
+            r    = range(i*(kM+1),i*(kM+1)+kM)
+            for j in range(0,cols):
+                c    = range(j*(kM+1),j*(kM+1)+kM)
+                for k in range(0,kM):
+                    for m in range(0,kM):
+                        ivals[r[0]+k,c[0]+m] = vals[k,m]
+        Image.fromarray(ivals.astype(np.uint8)).save(rfl)
+        # assume success on writing image files
+        ret  = True
+    return ret
+
+############################################################################
+##
+## Purpose:   Main wrapper for the neural network logic
+##
+############################################################################
+def nn(fl=None,model=None,recon=False):
+    # process a single file or a list of files being passed in
+    ret  = None
+    if not (fl == None):
+        # number of cpu cores for multiprocessing
+        nc   = const.CPU_COUNT if hasattr(const,"CPU_COUNT") else mp.cpu_count()
+        if (type(fl) == type([]) or type(fl) == type(np.asarray([]))):
+            ret  = Parallel(n_jobs=nc)(delayed(nn)(f) for f in fl)
+        else:
+            print(fl)
+            ro   = const.RO if hasattr(const,"RO") else True
+            ret  = {"fls":[],"roi":None,"kld":None,"swt":None,"model":None}
+            if (os.path.exists(fl) and os.path.getsize(fl) > 0):
+                ivals= cv2.imread(fl,cv2.IMREAD_GRAYSCALE)
+                shape= list(ivals.shape)
+                # construct the relaxed image name
+                #
+                # file name minus the type extension
+                fln  = fl[:fl.rfind(".") ]
+                # file type extension
+                flt  = fl[ fl.rfind("."):]
+                # current date and time
+                dt   = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                # relaxed image file name
+                #rfl  = fln + (const.IMGR if hasattr(const,"IMGR") else "_relaxed") + "_" + dt + flt
+                rfl  = fln + (const.IMGR if hasattr(const,"IMGR") else "_relaxed") + flt
+                if not ro:
+                    # diff image file name
+                    #dfl  = fln + (const.IMGD if hasattr(const,"IMGD") else "_diff"   ) + "_" + dt + flt
+                    dfl  = fln + (const.IMGD if hasattr(const,"IMGD") else "_diff"   ) + flt
+                    # RGB image file name
+                    #bfl  = fln + (const.IMGB if hasattr(const,"IMGB") else "_rgb"    ) + "_" + dt + flt
+                    bfl  = fln + (const.IMGB if hasattr(const,"IMGB") else "_rgb"    ) + flt
+                    # 3D image file name
+                    #tfl  = fln + (const.IMG3 if hasattr(const,"IMG3") else "_3d"    ) + "_" + dt + flt
+                    tfl  = fln + (const.IMG3 if hasattr(const,"IMG3") else "_3d"     ) + flt
+                    #ret["fls"].extend([fl,rfl,dfl,bfl,tfl])
+                    ret["fls"].extend([rfl,dfl,bfl,tfl])
+                else:
+                    ret["fls"].extend([rfl])
             else:
-                dump = []
-                for i in range(0,len(rivals)):
-                    dump.append(rivals_func(i))
+                return ret
+            # number of data points, properties and splits
+            m    = shape[0]
+            om   = m
+            p    = shape[1]
+            op   = p
+            # only one feature or property for the analysis
+            # just return None ... can't do anything
+            if not (m >= 2 or p >= 2):
+                return ret
+            s    = p
+            # deconstruct the data into blocks for management
+            # of the memory in lean times
+            ivals,m,p,s,blksc,blksr = nn_decon(ivals,m,p,s)
+            # smooth the compressed and deconstructed data
+            rivals,model            = nn_smooth(ivals,model,recon)
+            ret["model"]            = model
             # diff the relaxed images with the original images ... numpy makes this easy
             #
             # zero elements will demarcate the boundaries of the regions of interest
@@ -772,10 +900,10 @@ def nn(fl=None):
                type(ivals[0  ]) == type(np.asarray([])) and \
                type(ivals[0,0]) == type(np.asarray([])):
                 #kM   = max(2,ceil(sqrt(len(ivals[0,0])/calcN(len(ivals[0,0])))))
-                kM   = max(2,int(floor(np.float32(len(ivals[0,0]))/np.float32(calcN(len(ivals[0,0]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0,0])))/np.float32(calcN(len(ivals[0,0]))))))
             else:
                 #kM   = max(2,ceil(sqrt(len(ivals[0  ])/calcN(len(ivals[0  ])))))
-                kM   = max(2,int(floor(np.float32(len(ivals[0  ]))/np.float32(calcN(len(ivals[0  ]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0  ])))/np.float32(calcN(len(ivals[0  ]))))))
             # For the regions of interest, only need to look at the matrix coordinates
             # of each of the zeros, as they will demarcate the boundaries of changed pixel intensities.
             #
@@ -867,44 +995,6 @@ def nn(fl=None):
                 if not (len(nrps) == 0):
                     nnrps.append(nrps)
             ret["roi"] = nnrps
-            # reconstitute the relaxed input images
-            #
-            # first do the blocks of rows
-            def recon(vals):
-                ivals= list(vals)
-                if not (blksr <= 1):
-                    rblks= int(len(ivals)/blksr)
-                    for blk in range(0,rblks):
-                        ivals[blk*blksr] = list(ivals[blk*blksr])
-                        for i in range(1,blksr):
-                            ival = ivals[blk*blksr]
-                            ival.extend(ivals[(blk*blksr)+i])
-                            if not (i < blksr - 1):
-                                if not (km % const.MAX_ROWS == 0):
-                                    ival = np.asarray(ival)[range(0,len(ival)-(const.MAX_ROWS-(km%const.MAX_ROWS))),:]
-                            ivals[blk*blksr] = ival
-                    ival = []
-                    for i in range(0,int(len(ivals)/blksr)):
-                        if len(ivals) % blksr == 0:
-                            ival.append(ivals[i*blksr])
-                    ivals= np.asarray(ival)
-                # now do the blocks of cols
-                ivals= list(ivals)
-                if not (blksc <= 1):
-                    cblks= int(len(ivals)/blksc)
-                    for blk in range(0,cblks):
-                        ivals[blk*blksc] = list(ivals[blk*blksc])
-                        for i in range(1,blksc):
-                            ival = np.append(ivals[blk*blksc],ivals[(blk*blksc)+i],axis=1)
-                            if not (i < blksc - 1):
-                                if not (kp % const.MAX_COLS == 0):
-                                    ival = np.asarray(ival)[:,range(0,len(ival[0])-(const.MAX_COLS-(kp%const.MAX_COLS)))]
-                            ivals[blk*blksc] = ival
-                    ival = []
-                    for i in range(0,int(len(ivals)/blksc)):
-                        if len(ivals) % blksc == 0:
-                            ival.append(ivals[i*blksc])
-                return ival
             # reconstitute the relaxed image
             #
             # need the original outputs of the first level in the network since convolution blurs the original
@@ -912,8 +1002,7 @@ def nn(fl=None):
             # to gauge which pixels were changed ... this difference will be subtracted from the original image
             #
             # reconstitute the original relaxed image for comparison
-            rivals= np.asarray(recon(rivals))
-            rivals= rivals.reshape(np.asarray(rivals.shape)[sorted(range(0,len(rivals.shape)),reverse=True)])
+            rivals= np.asarray(nn_recon(rivals,om,op))[0]
             # define the relaxed image
             Image.fromarray(rivals.astype(np.uint8)).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"rivals.jpg")
             # the layers in question
@@ -925,11 +1014,9 @@ def nn(fl=None):
             preds = np.reshape(preds,newshape=preds.shape)
             preds = np.asarray(activs.predict(preds))
             # reconstitute the diff image
-            ivals = np.asarray(recon(ivals)).astype(np.uint8)
-            ivals = ivals.reshape(np.asarray(ivals.shape)[sorted(range(0,len(ivals.shape)),reverse=True)])
+            ivals = np.asarray(nn_recon(ivals,om,op)[0]).astype(np.uint8)
             # difference in the predictions of the layers in question to reveal the changed pixels
-            preds = np.round(np.asarray(abs(np.asarray(recon(preds[0,0]))-np.asarray(recon(preds[1,0])))))
-            preds = preds.reshape(np.asarray(preds.shape)[sorted(range(0,len(preds.shape)),reverse=True)])
+            preds = np.round(np.asarray(abs(np.asarray(nn_recon(preds[0,0],om,op)[0])-np.asarray(nn_recon(preds[1,0],om,op)[0]))))
             # changes here for the differences modeling
             #preds = np.where(abs(ivals-rivals)<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
             #preds = np.where(abs(ivals-rivals)>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15)-preds)
@@ -946,13 +1033,11 @@ def nn(fl=None):
             Image.fromarray(rivals).save(rfl)
             if not ro:
                 # reconstitute the diff image
-                diffab= np.asarray(recon(diffab))
-                diffab= diffab.reshape(np.asarray(diffab.shape)[sorted(range(0,len(diffab.shape)),reverse=True)])
+                diffab= np.asarray(nn_recon(diffab,om,op)[0])
                 # save the diff image
                 Image.fromarray(diffab).save(dfl)
                 # reconstitute the rgb diff image
-                diff  = np.asarray(recon(diff))
-                diff  = diff.reshape(np.asarray(diff.shape)[sorted(range(0,len(diff.shape)),reverse=True)])
+                diff  = np.asarray(nn_recon(diff,om,op)[0])
                 # save the diff image
                 Image.fromarray(diff).save(bfl)
                 # reconstitute the 3d image
@@ -968,58 +1053,27 @@ def nn(fl=None):
                 ret["swt"] = {rfl:stats.shapiro(rivals.flatten()                  )}
     return ret
 
-# *************** TESTING *****************
-
-def nn_compress(ifl=None,cfl=None):
-    ret  = False
-    if not (ifl == None or cfl == None):
-        ivals= imread(ifl).copy()
-        shape= list(ivals.shape)
-        # without going into a lot of detail here, using a result based upon the random cluster model
-        # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
-        # a total of M^2 data points, uniformly and evenly distributed throughout a bounded uniformly
-        # partitioned unit area in the 2D plane
-        #
-        # then the probability of connection for any 2 data points in the bounded region is given by
-        # M^2 / (M^2 + (2M * (N-1)^2)) and by the random cluster model, this probability has to equate
-        # to 1/2, which gives a way to solve for N, the minimum number of clusters to form for a
-        # data set consistinng of M^2 Gaussian distributed data points projected into 2D space
-        #
-        # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
-        #
-        # note that the number of data points is M^2 in the calculations, different than M below
-        kM   = max(2,int(floor(np.float32(min(shape))/np.float32(calcN(min(shape))))))
-        # replace kMxkM portions of the data set with uniformly distributed image values
-        #
-        # generate the kM^2 values
-        vals = np.random.randint(0,255,kM*kM).reshape((kM,kM))
-        # all kMxKM regions will have the same set of values represented
-        # while the boundary of the region will be the original image values
-        # this is the new data set that will be passed to nn_dat for smoothing
-        # and recovery of the image to test the theory
-        rows = int(floor(np.float32(shape[0])/np.float32(kM+1)))
-        cols = int(floor(np.float32(shape[1])/np.float32(kM+1)))
-        for i in range(0,rows):
-            r    = range(i*(kM+1),i*(kM+1)+kM)
-            for j in range(0,cols):
-                c    = range(j*(kM+1),j*(kM+1)+kM)
-                for k in range(0,kM):
-                    for m in range(0,kM):
-                        ivals[r[0]+k,c[0]+m] = vals[k,m]
-        Image.fromarray(ivals.astype(np.uint8)).save(cfl)
-        ret  = True
-    return ret
-
+############################################################################
+##
+## Purpose:   Testing function
+##
+############################################################################
 def nn_testing(fl="data/eye5.jpg"):
+    nfl  = []
     if (type(fl) == type([]) or type(fl) == type(np.asarray([]))):
         for f in fl:
-            nfl  = [f]
-            nfl.append(f[0:f.rfind(".")]+"_compressed"+f[f.rfind("."):])
-            nfl  = nfl[0:(len(nfl)-1)] if not nn_compress(nfl[len(nfl)-2],nfl[len(nfl)-1]) else nfl
+            nfl.append(f                                               )
+            nfl.append(f[0:f.rfind(".")]+"_comp_recon"+f[f.rfind("."):])
+            nfl  = nfl[0:-1] if not nn_compress(nfl[len(nfl)-2],nfl[len(nfl)-1]) else nfl
     else:
-        nfl  = [fl]
-        nfl.append(fl[0:fl.rfind(".")]+"_compressed"+fl[fl.rfind("."):])
-        nn_compress(nfl[0],nfl[1])
-        nfl  = fl if not nn_compress(nfl[len(nfl)-2],nfl[len(nfl)-1]) else nfl
+        nfl.append(fl                                                  )
+        nfl.append(fl[0:fl.rfind(".")]+"_comp_recon"+fl[fl.rfind("."):])
+        nfl  = fl if not nn_compress(nfl[0],nfl[1]) else nfl
     # run against the images
-    return nn(nfl)
+    for i in range(0,len(nfl)):
+        if i % 2 == 0:
+            ret  = nn(nfl[i])
+            print([nfl[i],ret["model"]])
+        else:
+            print(nn(nfl[i],ret["model"],True))
+    return
