@@ -184,7 +184,7 @@ def dbn(inputs=[]
             #
             # note that the number of data points is M^2 in the calculations, different than M below
             #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
-            kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
+            kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0])))))) + 1
             # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
             #
             # encode the input data using the scaled exponential linear unit
@@ -315,7 +315,7 @@ def dbn(inputs=[]
                 #
                 # note that the number of data points is M^2 in the calculations, different than M below
                 #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
-                kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0])))))) + 1
                 # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
                 #
                 # encode the input data using the scaled exponential linear unit
@@ -731,7 +731,7 @@ def nn_compress(ifl=None,rfl=None):
         # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
         #
         # note that the number of data points is M^2 in the calculations, different than M below
-        kM   = max(2,int(floor(np.float32(sqrt(min(shape)))/np.float32(calcN(min(shape))))))
+        kM   = max(2,int(floor(np.float32(sqrt(min(shape)))/np.float32(calcN(min(shape)))))) + 1
         # replace kMxkM portions of the data set with uniformly distributed image values
         #
         # generate the kM^2 values
@@ -900,10 +900,10 @@ def nn(fl=None,model=None,recon=False):
                type(ivals[0  ]) == type(np.asarray([])) and \
                type(ivals[0,0]) == type(np.asarray([])):
                 #kM   = max(2,ceil(sqrt(len(ivals[0,0])/calcN(len(ivals[0,0])))))
-                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0,0])))/np.float32(calcN(len(ivals[0,0]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0,0])))/np.float32(calcN(len(ivals[0,0])))))) + 1
             else:
                 #kM   = max(2,ceil(sqrt(len(ivals[0  ])/calcN(len(ivals[0  ])))))
-                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0  ])))/np.float32(calcN(len(ivals[0  ]))))))
+                kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0  ])))/np.float32(calcN(len(ivals[0  ])))))) + 1
             # For the regions of interest, only need to look at the matrix coordinates
             # of each of the zeros, as they will demarcate the boundaries of changed pixel intensities.
             #
