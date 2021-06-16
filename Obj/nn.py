@@ -183,7 +183,8 @@ def dbn(inputs=[]
             # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
             #
             # note that the number of data points is M^2 in the calculations, different than M below
-            kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
+            #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
+            kM   = max(2,int(floor(np.float32(len(ip[0,0]))/np.float32(calcN(len(ip[0,0]))))))
             # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
             #
             # encode the input data using the scaled exponential linear unit
@@ -313,7 +314,8 @@ def dbn(inputs=[]
                 # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
                 #
                 # note that the number of data points is M^2 in the calculations, different than M below
-                kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
+                #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
+                kM   = max(2,int(floor(np.float32(len(ip[0,0]))/np.float32(calcN(len(ip[0,0]))))))
                 # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
                 #
                 # encode the input data using the scaled exponential linear unit
@@ -575,7 +577,6 @@ def nn(fl=None):
             #
             # permutations of integer representations of the features in the image
             perm = permute(list(range(0,len(ivals[0,0]))),False,min(len(ivals[0,0]),const.MAX_FEATURES))
-            print(ivals); print(perm)
             perms= []
             for j in range(0,len(perm)):
                 if len(perm[j]) == min(len(ivals[0,0]),const.MAX_FEATURES) and \
@@ -585,7 +586,6 @@ def nn(fl=None):
                     else:
                         if not list(perm[j]) in list(perms):
                             perms.append(list(perm[j]))
-            print(perms)
             # the number of properties most likely changed
             p    = len(perms[0])
             s    = p
@@ -611,7 +611,6 @@ def nn(fl=None):
                 nivals= np.asarray(nivals)
             else:
                 nivals= ivals.copy()
-            print(nivals[0]); print([max(nivals.flatten()),len(nivals),len(nivals[0]),len(nivals[0,0])])
             # test if tensorflow is using the GPU or CPU
             dump = None                                      if ver == const.VER else tf.compat.v1.disable_eager_execution()
             cfg  = tf.ConfigProto(log_device_placement=True) if ver == const.VER else tf.compat.v1.ConfigProto(log_device_placement=True)
@@ -621,7 +620,6 @@ def nn(fl=None):
                 a = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3], name='a')
                 b = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[3, 2], name='b')
                 c = tf.matmul(a, b)
-            print(sess.run(c))
             # don't want to use a linear model for dbnact as that assumes that the
             # data are linearly separable, which results in 2 classes by default
             # as such, the resulting linear subspace will present values fairly close
@@ -672,7 +670,6 @@ def nn(fl=None):
             # guaranteed by the Markov property and encoding those characteristics and changed states
             # for use afterward when other parts of the bounded region undergo the same relaxation process
             # *********************************
-            print([pvals.shape,nivals.shape,ivals.shape])
             rivals= ivals.copy()
             def rivals_func(i):
                 for j in range(0,len(perms)):
@@ -692,7 +689,6 @@ def nn(fl=None):
                 dump = []
                 for i in range(0,len(rivals)):
                     dump.append(rivals_func(i))
-            print(pvals[0,0]); print(nivals[0,0]); print(perms); print(rivals); print(rivals.shape)
             # diff the relaxed images with the original images ... numpy makes this easy
             #
             # zero elements will demarcate the boundaries of the regions of interest
@@ -704,7 +700,6 @@ def nn(fl=None):
                 diffb= const.DIFFB if int(const.DIFFB) == const.DIFFB else diffb
             diffab= abs(diffa*rivals-diffb*ivals)
             diff  = abs(      rivals-      ivals)
-            print(diffab); print([max(diffab.flatten()),diffab.shape,rivals.shape,ivals.shape,len(perms),len(perms[0]),blksc,blksr]);
             # obtain the Kullback Leibler divergence between rivals and the original ivals
             ret["kld"] = kld(rivals,ivals)
             # zeros in the diff image will correspond to the boundaries of the regions of interest
@@ -762,7 +757,6 @@ def nn(fl=None):
                     dz['y'] = sorted(dz['x'],key=lambda x: x[-1])
                     # append the coordinates of the list of zeros for the current diff image
                     z.append(dz)
-            print(z)
             # without going into a lot of detail here, using a result based upon the random cluster model
             # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
             # a total of M^2 data points, uniformly and evenly distributed throughout a bounded uniformly
@@ -777,9 +771,11 @@ def nn(fl=None):
             if type(ivals     ) == type(np.asarray([])) and \
                type(ivals[0  ]) == type(np.asarray([])) and \
                type(ivals[0,0]) == type(np.asarray([])):
-                kM   = max(2,ceil(sqrt(len(ivals[0,0])/calcN(len(ivals[0,0])))))
+                #kM   = max(2,ceil(sqrt(len(ivals[0,0])/calcN(len(ivals[0,0])))))
+                kM   = max(2,int(floor(np.float32(len(ivals[0,0]))/np.float32(calcN(len(ivals[0,0]))))))
             else:
-                kM   = max(2,ceil(sqrt(len(ivals[0  ])/calcN(len(ivals[0  ])))))
+                #kM   = max(2,ceil(sqrt(len(ivals[0  ])/calcN(len(ivals[0  ])))))
+                kM   = max(2,int(floor(np.float32(len(ivals[0  ]))/np.float32(calcN(len(ivals[0  ]))))))
             # For the regions of interest, only need to look at the matrix coordinates
             # of each of the zeros, as they will demarcate the boundaries of changed pixel intensities.
             #
@@ -830,7 +826,6 @@ def nn(fl=None):
                 if not (len(nrp) == 0):
                     nrps.append(nrp)
             rps  = nrps
-            print(rps); print([len(z),len(rps)])
             # let's merge region proposals into regions of interest
             #
             # there will be a lot of overlap, as the region proposals are
@@ -872,7 +867,6 @@ def nn(fl=None):
                 if not (len(nrps) == 0):
                     nnrps.append(nrps)
             ret["roi"] = nnrps
-            print(ret["roi"])
             # reconstitute the relaxed input images
             #
             # first do the blocks of rows
@@ -920,7 +914,6 @@ def nn(fl=None):
             # reconstitute the original relaxed image for comparison
             rivals= np.asarray(recon(rivals))
             rivals= rivals.reshape(np.asarray(rivals.shape)[sorted(range(0,len(rivals.shape)),reverse=True)])
-            print(rivals.shape)
             # define the relaxed image
             Image.fromarray(rivals.astype(np.uint8)).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"rivals.jpg")
             # the layers in question
@@ -934,43 +927,37 @@ def nn(fl=None):
             # reconstitute the diff image
             ivals = np.asarray(recon(ivals)).astype(np.uint8)
             ivals = ivals.reshape(np.asarray(ivals.shape)[sorted(range(0,len(ivals.shape)),reverse=True)])
-            print(ivals.shape)
             # difference in the predictions of the layers in question to reveal the changed pixels
             preds = np.round(np.asarray(abs(np.asarray(recon(preds[0,0]))-np.asarray(recon(preds[1,0])))))
             preds = preds.reshape(np.asarray(preds.shape)[sorted(range(0,len(preds.shape)),reverse=True)])
             # changes here for the differences modeling
             #preds = np.where(abs(ivals-rivals)<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
             #preds = np.where(abs(ivals-rivals)>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15)-preds)
+            #preds = np.where(preds<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
+            #preds = np.where(preds>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15)-preds)
             preds = np.where(preds<=(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10),0,preds-(const.PRED_L_SHIFT if hasattr(const,"PRED_L_SHIFT") else 10)      )
-            preds = np.where(preds>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 15)-preds)
+            preds = np.where(preds>=(const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 11),0,      (const.PRED_H_SHIFT if hasattr(const,"PRED_H_SHIFT") else 11)-preds)
             preds = preds.astype(np.uint8)
             # define the relaxed image
             Image.fromarray(ivals).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"ivals.jpg")
             Image.fromarray(preds).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"preds.jpg")
             rivals= ivals - preds
-            print([rivals.shape,rivals.all()==ivals.all()])
             # save the relaxed image
-            print([rfl,type(rfl)])
             Image.fromarray(rivals).save(rfl)
             if not ro:
                 # reconstitute the diff image
                 diffab= np.asarray(recon(diffab))
                 diffab= diffab.reshape(np.asarray(diffab.shape)[sorted(range(0,len(diffab.shape)),reverse=True)])
-                print(diffab.shape)
                 # save the diff image
-                print([dfl,type(dfl)])
                 Image.fromarray(diffab).save(dfl)
                 # reconstitute the rgb diff image
                 diff  = np.asarray(recon(diff))
                 diff  = diff.reshape(np.asarray(diff.shape)[sorted(range(0,len(diff.shape)),reverse=True)])
-                print(diff.shape)
                 # save the diff image
-                print([bfl,type(bfl)])
                 Image.fromarray(diff).save(bfl)
                 # reconstitute the 3d image
                 tivals= restore3d(ivals)
                 # save the 3d image
-                print([tfl,type(tfl)])
                 Image.fromarray(tivals).save(tfl)
                 # perform the Shapiro Wilks test on diff ... we want to know if the errors are normal
                 ret["swt"] = { fl:stats.shapiro( ivals.flatten()                  ) \
@@ -983,79 +970,56 @@ def nn(fl=None):
 
 # *************** TESTING *****************
 
-def nn_testing(M=500,N=2,fl="data/Almandari-Pre-OP.jpg"):
+def nn_compress(ifl=None,cfl=None):
+    ret  = False
+    if not (ifl == None or cfl == None):
+        ivals= imread(ifl).copy()
+        shape= list(ivals.shape)
+        # without going into a lot of detail here, using a result based upon the random cluster model
+        # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
+        # a total of M^2 data points, uniformly and evenly distributed throughout a bounded uniformly
+        # partitioned unit area in the 2D plane
+        #
+        # then the probability of connection for any 2 data points in the bounded region is given by
+        # M^2 / (M^2 + (2M * (N-1)^2)) and by the random cluster model, this probability has to equate
+        # to 1/2, which gives a way to solve for N, the minimum number of clusters to form for a
+        # data set consistinng of M^2 Gaussian distributed data points projected into 2D space
+        #
+        # each class contains M^2/N^2 data points ... the sqrt of this number is the size of the kernel we want
+        #
+        # note that the number of data points is M^2 in the calculations, different than M below
+        kM   = max(2,int(floor(np.float32(min(shape))/np.float32(calcN(min(shape))))))
+        # replace kMxkM portions of the data set with uniformly distributed image values
+        #
+        # generate the kM^2 values
+        vals = np.random.randint(0,255,kM*kM).reshape((kM,kM))
+        # all kMxKM regions will have the same set of values represented
+        # while the boundary of the region will be the original image values
+        # this is the new data set that will be passed to nn_dat for smoothing
+        # and recovery of the image to test the theory
+        rows = int(floor(np.float32(shape[0])/np.float32(kM+1)))
+        cols = int(floor(np.float32(shape[1])/np.float32(kM+1)))
+        for i in range(0,rows):
+            r    = range(i*(kM+1),i*(kM+1)+kM)
+            for j in range(0,cols):
+                c    = range(j*(kM+1),j*(kM+1)+kM)
+                for k in range(0,kM):
+                    for m in range(0,kM):
+                        ivals[r[0]+k,c[0]+m] = vals[k,m]
+        Image.fromarray(ivals.astype(np.uint8)).save(cfl)
+        ret  = True
+    return ret
+
+def nn_testing(fl="data/eye5.jpg"):
+    if (type(fl) == type([]) or type(fl) == type(np.asarray([]))):
+        for f in fl:
+            nfl  = [f]
+            nfl.append(f[0:f.rfind(".")]+"_compressed"+f[f.rfind("."):])
+            nfl  = nfl[0:(len(nfl)-1)] if not nn_compress(nfl[len(nfl)-2],nfl[len(nfl)-1]) else nfl
+    else:
+        nfl  = [fl]
+        nfl.append(fl[0:fl.rfind(".")]+"_compressed"+fl[fl.rfind("."):])
+        nn_compress(nfl[0],nfl[1])
+        nfl  = fl if not nn_compress(nfl[len(nfl)-2],nfl[len(nfl)-1]) else nfl
     # run against the images
-    print(nn(fl))
-    # number of data points, properties and splits
-    m    = M
-    p    = N
-    if p > const.MAX_FEATURES:
-        p    = const.MAX_FEATURES
-    #s    = p + 1
-    s    = p
-    # uniformly sample values between 0 and 1
-    #ivals= np.random.sample(size=(500,3))
-    ivals= np.random.sample(size=(m,p))
-    ovals= categoricals(M,s,p)
-    # generate the clustering model for using the test values for training
-    model = dbn(ivals,ovals,splits=s,props=p)
-    if not (model == None):
-        # generate some test data for predicting using the model
-        ovals= np.random.sample(size=(int(m/10),p))
-        # encode and decode values
-        pvals= model.predict(ovals)
-        # look at the original values and the predicted values
-        print(ovals)
-        print(pvals)
-    else:
-        print("Model 1 is null.")
-    ovals= np.random.sample(size=(m,1))
-    # generate the regression model for using the test values for training
-    #model = dbn(ivals
-                #,ovals
-                #,splits=s
-                #,props=p
-                #,loss='mean_squared_error'
-                #,optimizer='sgd'
-                #,rbmact='sigmoid'
-                #,dbnact='linear'
-                #,dbnout=1)
-    model = dbn(ivals
-               ,ovals
-               ,splits=s
-               ,props=p
-               ,loss='mean_squared_error'
-               ,optimizer='sgd'
-               ,rbmact='tanh'
-               ,dbnact='linear'
-               ,dbnout=1)
-    if not (model == None):
-        # generate some test data for predicting using the model
-        ovals= np.random.sample(size=(int(m/10),p))
-        # encode and decode values
-        pvals= model.predict(ovals)
-        # look at the original values and the predicted values
-        print(ovals)
-        print(pvals)
-    else:
-        print("Model 2 is null.")
-    # generate the clustering model for using the test values for training
-    # testing models of dimensions > 3
-    m    = 50
-    p    = 3
-    s    = p
-    ivals= np.random.sample(size=(m,p))
-    # we need values to turn into labels when training
-    # one-hot encode the integer labels as its required for the softmax
-    ovals= categoricals(m,s,const.MAX_FEATURES)
-    model = dbn(ivals,ovals,splits=s,props=p)
-    if not (model == None):
-        # generate some test data for predicting using the model
-        ovals= np.random.sample(size=(int(m/10),p))
-        # encode and decode values
-        pvals= model.predict(ovals)
-        # look at the original values and the predicted values
-        print(ovals)
-        print(pvals)
-    else:
-        print("Model 2 is null.")
+    return nn(nfl)

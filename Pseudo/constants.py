@@ -89,8 +89,8 @@ class constants():
     # neural network constants
     OUTP           = 1
     SHAPE          = 3
-    SPLITS         = 2
-    PROPS          = 2
+    SPLITS         = 3
+    PROPS          = 3
     LOSS           = "categorical_crossentropy"
     OPTI           = "rmsprop"
     RBMA           = "softmax"
