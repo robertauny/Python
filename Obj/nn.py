@@ -713,7 +713,7 @@ def nn_smooth(ivals=None,model=None,recon=False):
 ## Purpose:   Compress and reconstruct the image
 ##
 ############################################################################
-def nn_compress(ifl=None,rfl=None):
+def nn_compress(ifl=None,rfl=None,uncompress=False):
     ret  = False
     if not (ifl == None or rfl == None):
         ivals= cv2.imread(ifl,cv2.IMREAD_GRAYSCALE).copy()
@@ -748,7 +748,17 @@ def nn_compress(ifl=None,rfl=None):
                 c    = range(j*(kM+1),j*(kM+1)+kM)
                 for k in range(0,kM):
                     for m in range(0,kM):
-                        ivals[r[0]+k,c[0]+m] = vals[k,m]
+                        if r[0]+k < shape[0] and c[0]+(kM+1) < shape[1]:
+                            add              = ivals[r[0]+ k   ,c[0]+(kM+1)]
+                        else:
+                            if r[0]+k < shape[0]:
+                                add          = ivals[r[0]+ k   ,c[0]-(m+1) ]
+                            else:
+                                if c[0]+(kM+1) < shape[1]:
+                                    add      = ivals[r[0]-(k+1),c[0]+(kM+1)]
+                                else:
+                                    add      = ivals[r[0]-(k+1),c[0]-(m+1) ]
+                        ivals[r[0]+k,c[0]+m] = vals[k,m] if not uncompress else add
         Image.fromarray(ivals.astype(np.uint8)).save(rfl)
         # assume success on writing image files
         ret  = True
@@ -1073,7 +1083,10 @@ def nn_testing(fl="data/eye5.jpg"):
     for i in range(0,len(nfl)):
         if i % 2 == 0:
             ret  = nn(nfl[i])
+            print(ret)
             print([nfl[i],ret["model"]])
         else:
             print(nn(nfl[i],ret["model"],True))
+            unc  = nfl[i][0:nfl[i].rfind(".")]+"_comp_recon_uncomp"+nfl[i][nfl[i].rfind("."):]
+            print(nn_compress(nfl[i],unc,True))
     return
