@@ -687,15 +687,17 @@ def nn_smooth(ivals=None,model=None,recon=False):
                     # the partitions are stacked on top of each other in the ordering of the perms
                     # so dividing by the number of images, we have all of the partitions for each image in stacked groupings
                     # we need the right stack and partition for each image to get the right receptive field for replacement
-                    if recon:
+                    #if not recon:
                         # for reconstructions part of the image has been randomly generated
                         # that allows for the compression of the image and overlap
                         # so we will always take the last element and replace all other values with it
                         # this is from the markov property and other proven results in the paper
-                        idx              = len(perms[j]) - 1
-                    else:
-                        idx              = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
+                        #idx              = len(perms[j]) - 1
+                    #else:
+                        #idx              = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
+                    idx                  = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
                     # copy the most probable color to all pixels in the kth row of the local receptive field
+                        #rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
                     rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
             return None
         # number of cpu cores for multiprocessing
@@ -749,16 +751,26 @@ def nn_compress(ifl=None,rfl=None,uncompress=False):
                 for k in range(0,kM):
                     for m in range(0,kM):
                         if r[0]+k < shape[0] and c[0]+(kM+1) < shape[1]:
-                            add              = ivals[r[0]+(k  ),c[0]+(kM+1)]
+                            add1             = ivals[r[0]+(k  ),c[0]+(kM+1)]
                         else:
                             if r[0]+k < shape[0]:
-                                add          = ivals[r[0]+(k  ),c[0]-( m+1)]
+                                add1         = ivals[r[0]+(k  ),c[0]-( m+1)]
                             else:
                                 if c[0]+(kM+1) < shape[1]:
-                                    add      = ivals[r[0]-(k+1),c[0]+(kM+1)]
+                                    add1     = ivals[r[0]-(k+1),c[0]+(kM+1)]
                                 else:
-                                    add      = ivals[r[0]-(k+1),c[0]-( m+1)]
-                        ivals[r[0]+k,c[0]+m] = vals[k,m] if not uncompress else add
+                                    add1     = ivals[r[0]-(k+1),c[0]-( m+1)]
+                        if r[0]+(kM+1) < shape[0] and c[0]+(m) < shape[1]:
+                            add2             = ivals[r[0]+(kM+1),c[0]+(m  )]
+                        else:
+                            if r[0]+(kM+1) < shape[0]:
+                                add2         = ivals[r[0]+(kM+1),c[0]-(m+1)]
+                            else:
+                                if c[0]+(m) < shape[1]:
+                                    add2     = ivals[r[0]-( k+1),c[0]+(m  )]
+                                else:
+                                    add2     = ivals[r[0]-( k+1),c[0]-(m+1)]
+                        ivals[r[0]+k,c[0]+m] = vals[k,m] if not uncompress else np.uint8(floor((add1+add2)/2.0))
         Image.fromarray(ivals.astype(np.uint8)).save(rfl)
         # assume success on writing image files
         ret  = True
@@ -1086,7 +1098,7 @@ def nn_testing(fl="data/eye5.jpg"):
             print(ret)
             print([nfl[i],ret["model"]])
         else:
-            print(nn(nfl[i],ret["model"],True))
             unc  = nfl[i][0:nfl[i].rfind(".")]+"_comp_recon_uncomp"+nfl[i][nfl[i].rfind("."):]
             print(nn_compress(nfl[i],unc,True))
+            print(nn(unc,ret["model"],True))
     return
