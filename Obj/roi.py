@@ -30,8 +30,8 @@ from cv2                         import imread                     \
                                        ,calibrateCamera
 from joblib                      import Parallel,delayed
 from torch                       import from_numpy,float32,save
-from pytorch3d.ops               import cubify
-from pytorch3d.io                import save_obj
+#from pytorch3d.ops               import cubify
+#from pytorch3d.io                import save_obj
 from scipy.io                    import savemat,loadmat
 from scipy.interpolate           import interp1d
 
@@ -365,8 +365,8 @@ def roif(dat=None):
                 # For the interpolation, we can apply a canonical ordering on the data points comprising the regions of interest
                 # and find a monotone function, which by definition is order preserving, so that we can always map data points
                 # to their associated data points in other layers.
-                # In essence, choosing the ordering, e.g. x_1 <= x_2 <= x_3 <= … <= x_n,
-                # doesn’t change the region of interest nor the location of any of the points in its boundary.
+                # In essence, choosing the ordering, e.g. x_1 <= x_2 <= x_3 <= ... <= x_n,
+                # doesn't change the region of interest nor the location of any of the points in its boundary.
                 # The ordering only changes the starting point and ending points defining the boundary of the regions of interest.
                 # Thus, we will always know how data points in the boundary of the region of interest in one slice are mapped to
                 # the associated boundary in the next slice, allowing the regions to be tracked through slices.
@@ -520,9 +520,9 @@ def voxel(fl=None,bbox=None,poly=None):
         # create and save the mesh
         try:
             # the model used at run time
-            mesh       = cubify(vox,0.5)
+            #mesh       = cubify(vox,0.5)
             ret["obj"] = fln + ".obj"
-            save_obj(ret["obj"],mesh.verts_list()[0],mesh.faces_list()[0])
+            #save_obj(ret["obj"],mesh.verts_list()[0],mesh.faces_list()[0])
         except:
             print(fl)
         # this will be the voxel used at run time

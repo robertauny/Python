@@ -185,6 +185,7 @@ def dbn(inputs=[]
             # note that the number of data points is M^2 in the calculations, different than M below
             #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
             kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0])))))) + 1
+            #kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
             # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
             #
             # encode the input data using the scaled exponential linear unit
@@ -316,6 +317,7 @@ def dbn(inputs=[]
                 # note that the number of data points is M^2 in the calculations, different than M below
                 #kM   = max(2,ceil(sqrt(len(ip[0,0])/calcN(len(ip[0,0])))))
                 kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0])))))) + 1
+                #kM   = max(2,int(floor(np.float32(sqrt(len(ip[0,0])))/np.float32(calcN(len(ip[0,0]))))))
                 # inputs have kM columns and any number of rows, while output has kM columns and any number of rows
                 #
                 # encode the input data using the scaled exponential linear unit
@@ -581,7 +583,7 @@ def nn_smooth(ivals=None,model=None,recon=False):
         # Use the permutations function to get sequential permutations of length MAX_FEATURES
         # Create a new data structure to hold the data for each feature indicated by the permutations.
         # Train the model using the created data structure then predict using the same data structure.
-        # Modify the original data structure (image) using what’s been predicted.
+        # Modify the original data structure (image) using what's been predicted.
         #
         # permutations of integer representations of the features in the image
         perm = permute(list(range(0,len(ivals[0,0]))),False,min(len(ivals[0,0]),const.MAX_FEATURES))
@@ -688,14 +690,15 @@ def nn_smooth(ivals=None,model=None,recon=False):
                     # so dividing by the number of images, we have all of the partitions for each image in stacked groupings
                     # we need the right stack and partition for each image to get the right receptive field for replacement
                     #if not recon:
+                    if recon:
                         # for reconstructions part of the image has been randomly generated
                         # that allows for the compression of the image and overlap
                         # so we will always take the last element and replace all other values with it
                         # this is from the markov property and other proven results in the paper
-                        #idx              = len(perms[j]) - 1
-                    #else:
-                        #idx              = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
-                    idx                  = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
+                        idx              = len(perms[j]) - 1
+                    else:
+                        idx              = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
+                    #idx                  = list(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]).index(max(pvals[len(perms)*i+j,k,range(0,len(perms[j]))]))
                     # copy the most probable color to all pixels in the kth row of the local receptive field
                         #rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
                     rivals[i,k,perms[j]] = np.full(len(perms[j]),ivals[i,k,perms[j][idx]])
@@ -718,7 +721,8 @@ def nn_smooth(ivals=None,model=None,recon=False):
 def nn_compress(ifl=None,rfl=None,uncompress=False):
     ret  = False
     if not (ifl == None or rfl == None):
-        ivals= cv2.imread(ifl,cv2.IMREAD_GRAYSCALE).copy()
+        #ivals= cv2.imread(ifl,cv2.IMREAD_GRAYSCALE).copy()
+        ivals= np.asarray(Image.open(ifl).convert("L")).copy()
         shape= list(ivals.shape)
         # without going into a lot of detail here, using a result based upon the random cluster model
         # we can estimate the number of classes to form as by assuming that we have N^2 classes containing
@@ -734,6 +738,7 @@ def nn_compress(ifl=None,rfl=None,uncompress=False):
         #
         # note that the number of data points is M^2 in the calculations, different than M below
         kM   = max(2,int(floor(np.float32(sqrt(min(shape)))/np.float32(calcN(min(shape)))))) + 1
+        #kM   = max(2,int(floor(np.float32(sqrt(min(shape)))/np.float32(calcN(min(shape))))))
         # replace kMxkM portions of the data set with uniformly distributed image values
         #
         # generate the kM^2 values
@@ -794,7 +799,8 @@ def nn(fl=None,model=None,recon=False):
             ro   = const.RO if hasattr(const,"RO") else True
             ret  = {"fls":[],"roi":None,"kld":None,"swt":None,"model":None}
             if (os.path.exists(fl) and os.path.getsize(fl) > 0):
-                ivals= cv2.imread(fl,cv2.IMREAD_GRAYSCALE)
+                #ivals= cv2.imread(fl,cv2.IMREAD_GRAYSCALE)
+                ivals= np.asarray(Image.open(fl).convert("L")).copy()
                 shape= list(ivals.shape)
                 # construct the relaxed image name
                 #
@@ -923,9 +929,11 @@ def nn(fl=None,model=None,recon=False):
                type(ivals[0,0]) == type(np.asarray([])):
                 #kM   = max(2,ceil(sqrt(len(ivals[0,0])/calcN(len(ivals[0,0])))))
                 kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0,0])))/np.float32(calcN(len(ivals[0,0])))))) + 1
+                #kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0,0])))/np.float32(calcN(len(ivals[0,0]))))))
             else:
                 #kM   = max(2,ceil(sqrt(len(ivals[0  ])/calcN(len(ivals[0  ])))))
                 kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0  ])))/np.float32(calcN(len(ivals[0  ])))))) + 1
+                #kM   = max(2,int(floor(np.float32(sqrt(len(ivals[0  ])))/np.float32(calcN(len(ivals[0  ]))))))
             # For the regions of interest, only need to look at the matrix coordinates
             # of each of the zeros, as they will demarcate the boundaries of changed pixel intensities.
             #
@@ -1028,7 +1036,13 @@ def nn(fl=None,model=None,recon=False):
             # define the relaxed image
             Image.fromarray(rivals.astype(np.uint8)).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"rivals.jpg")
             # the layers in question
-            lyrs  = [l.output for l in np.asarray(model.layers)[[0,len(model.layers)-2]]]
+            if type(model.input     ) == type(np.asarray([])) and \
+               type(model.input[0  ]) == type(np.asarray([])) and \
+               type(model.input[0,0]) == type(np.asarray([])):
+                ll    = list(range(kM,(const.CONVS if hasattr(const,"CONVS") and const.CONVS >= kM else 10+kM)))
+                lyrs  = [l.output for l in np.asarray(model.layers)[[len(ll),len(model.layers)-len(ll)]]]
+            else:
+                lyrs  = [l.output for l in np.asarray(model.layers)[[0,len(model.layers)-2]]]
             # the activations at the layers in question
             activs= Model(inputs=model.input,outputs=lyrs)
             # predictions based upon the layers in question
