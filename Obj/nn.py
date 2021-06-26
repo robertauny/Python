@@ -1036,13 +1036,8 @@ def nn(fl=None,model=None,recon=False):
             # define the relaxed image
             Image.fromarray(rivals.astype(np.uint8)).save((const.TMP_DIR if hasattr(const,"TMP_DIR") else "/tmp/")+"rivals.jpg")
             # the layers in question
-            if type(model.input     ) == type(np.asarray([])) and \
-               type(model.input[0  ]) == type(np.asarray([])) and \
-               type(model.input[0,0]) == type(np.asarray([])):
-                ll    = list(range(kM,(const.CONVS if hasattr(const,"CONVS") and const.CONVS >= kM else 10+kM)))
-                lyrs  = [l.output for l in np.asarray(model.layers)[[len(ll),len(model.layers)-len(ll)]]]
-            else:
-                lyrs  = [l.output for l in np.asarray(model.layers)[[0,len(model.layers)-2]]]
+            ll    = list(range(kM,(const.CONVS if hasattr(const,"CONVS") and const.CONVS >= kM else 10+kM)))
+            lyrs  = [l.output for l in np.asarray(model.layers)[[len(ll),len(model.layers)-len(ll)]]]
             # the activations at the layers in question
             activs= Model(inputs=model.input,outputs=lyrs)
             # predictions based upon the layers in question
