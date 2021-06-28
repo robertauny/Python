@@ -1076,10 +1076,10 @@ def nn(fl=None,model=None,recon=False):
                 # save the 3d image
                 Image.fromarray(tivals).save(tfl)
                 # perform the Shapiro Wilks test on diff ... we want to know if the errors are normal
-                ret["swt"] = { fl:stats.shapiro( ivals.flatten()                  ) \
-                             ,rfl:stats.shapiro(rivals.flatten()                  ) \
-                             ,dfl:stats.shapiro(diffab.flatten()                  ) \
-                             ,bfl:stats.kstest(   diff.flatten(),'randint',(0,255))}
+                ret["swt"] = {bfl:stats.shapiro(np.random.choice(  diff.flatten(),5000)                                          ) \
+                             ,rfl:stats.shapiro(np.random.choice(rivals.flatten(),5000)                                          ) \
+                             ,dfl:stats.shapiro(np.random.choice(diffab.flatten(),5000)                                          ) \
+                             , fl:stats.kstest( np.random.choice( ivals.flatten(),5000),'randint',(0,255),alternative='two-sided')}
             else:
                 ret["swt"] = {rfl:stats.shapiro(rivals.flatten()                  )}
     return ret
@@ -1110,4 +1110,5 @@ def nn_testing(fl="data/eye5.jpg"):
             unc  = nfl[i][0:nfl[i].rfind(".")]+"_comp_recon_uncomp"+nfl[i][nfl[i].rfind("."):]
             print(nn_compress(nfl[i],unc,True))
             print(nn(unc,ret["model"],True))
+            print(nn(nfl[i],ret["model"],True))
     return
