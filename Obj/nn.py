@@ -1107,8 +1107,10 @@ def nn_testing(fl="data/eye5.jpg"):
             print(ret)
             print([nfl[i],ret["model"]])
         else:
-            unc  = nfl[i][0:nfl[i].rfind(".")]+"_comp_recon_uncomp"+nfl[i][nfl[i].rfind("."):]
+            unc  = nfl[i][0:nfl[i].rfind(".")]+"_uncomp"+nfl[i][nfl[i].rfind("."):]
             print(nn_compress(nfl[i],unc,True))
             print(nn(unc,ret["model"],True))
-            print(nn(nfl[i],ret["model"],True))
+            unc  = nfl[i][0:nfl[i].rfind("_")]+          nfl[i][nfl[i].rfind("."):]
+            print(nn_compress(nfl[i],unc))
+            print(nn(unc,ret["model"],True))
     return

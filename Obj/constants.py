@@ -60,12 +60,12 @@ THING_COLORS   = [[255, 255,  25]
                  ,[210, 245,  60]]
 EVAL_TYPE      = None
 PMO            = False
-RO             = True
+RO             = False
 CONFIG_YAML    = "/C137_working_dir/notebooks/meshrcnn/meshrcnn/configs/pix3d/meshrcnn_R50_FPN.yaml"
 #CONFIG_YAML    = "/C137_working_dir/repos/detectron2/configs/COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
 SHIFT          = 200#150
-PRED_L_SHIFT   = 100#103
-PRED_H_SHIFT   = 101#114
+PRED_L_SHIFT   = 140#103
+PRED_H_SHIFT   = 141#114
 VSIZE          = 8
 HOUN_OFFSET    = 10
 CPU_COUNT      = 1
